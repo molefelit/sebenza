@@ -1,98 +1,134 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Link } from "expo-router";
+import { useEffect, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { supabase } from "../lib/supabase";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+export default function Index() {
+  const [matches, setMatches] = useState<any[]>([]);
+  const [jobTitle, setJobTitle] = useState("");
+  const [loading, setLoading] = useState(true);
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+  const loadLatestMatches = async () => {
+    setLoading(true);
+
+    const { data: jobs } = await supabase
+      .from("jobs")
+      .select("id, title")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (!jobs || jobs.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    const job = jobs[0];
+    setJobTitle(job.title);
+
+    const { data: matchData } = await supabase.rpc("match_workers_for_job", {
+      job_id: job.id,
+    });
+
+    setMatches(matchData || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadLatestMatches();
+  }, []);
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.logo}>Sebenza</Text>
+      <Text style={styles.tagline}>
+        Hyperlocal work matching for South Africa's informal economy
+      </Text>
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+      <Link href="/post-job" asChild>
+        <Pressable style={styles.primaryButton}>
+          <Text style={styles.buttonText}>Post a Job</Text>
+        </Pressable>
+      </Link>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+      <Link href="/worker-signup" asChild>
+        <Pressable style={styles.secondaryButton}>
+          <Text style={styles.buttonText}>Sign Up as a Worker</Text>
+        </Pressable>
+      </Link>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+      {loading ? (
+        <Text style={styles.status}>Loading recent activity...</Text>
+      ) : jobTitle ? (
+        <View style={styles.matchesSection}>
+          <Text style={styles.sectionTitle}>Latest job: "{jobTitle}"</Text>
+          <Text style={styles.status}>
+            {matches.length > 0
+              ? `${matches.length} worker(s) nearby`
+              : "No matching workers nearby yet"}
+          </Text>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+          {matches.map((match) => (
+            <View key={match.worker_id} style={styles.matchCard}>
+              <Text style={styles.matchName}>{match.name}</Text>
+              <Text style={styles.matchText}>Skill: {match.skill}</Text>
+              <Text style={styles.matchText}>
+                Distance: {(match.distance_meters / 1000).toFixed(2)} km
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.status}>No jobs posted yet — try posting one!</Text>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+  container: { padding: 24, paddingTop: 70, alignItems: "stretch" },
+  logo: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#fff",
+    textAlign: "center",
+    marginBottom: 8,
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+  tagline: {
+    fontSize: 15,
+    color: "#aaa",
+    textAlign: "center",
+    marginBottom: 32,
   },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+  primaryButton: {
+    paddingVertical: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    marginBottom: 14,
+    backgroundColor: "#007AFF",
   },
-  title: {
-    textAlign: 'center',
+  secondaryButton: {
+    paddingVertical: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    marginBottom: 14,
+    backgroundColor: "#2c2c2e",
   },
-  code: {
-    textTransform: 'uppercase',
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  matchesSection: { marginTop: 30 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+    marginBottom: 6,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  status: { fontSize: 14, color: "#aaa", marginBottom: 16 },
+  matchCard: {
+    borderWidth: 1,
+    borderColor: "#444",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
   },
+  matchName: { fontWeight: "600", fontSize: 16, color: "#fff" },
+  matchText: { color: "#fff" },
 });
