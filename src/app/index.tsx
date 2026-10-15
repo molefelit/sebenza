@@ -1,9 +1,19 @@
 import { Link } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { RequireAuth, useAuth } from "../lib/auth";
 import { supabase } from "../lib/supabase";
 
 export default function Index() {
+  return (
+    <RequireAuth>
+      <HomeScreen />
+    </RequireAuth>
+  );
+}
+
+function HomeScreen() {
+  const { session } = useAuth();
   const [matches, setMatches] = useState<any[]>([]);
   const [jobTitle, setJobTitle] = useState("");
   const [loading, setLoading] = useState(true);
@@ -43,6 +53,7 @@ export default function Index() {
       <Text style={styles.tagline}>
         Hyperlocal work matching for South Africa's informal economy
       </Text>
+      <Text style={styles.signedIn}>Signed in as {session?.user.email}</Text>
 
       <Link href="/post-job" asChild>
         <Pressable style={styles.primaryButton}>
@@ -78,8 +89,12 @@ export default function Index() {
           ))}
         </View>
       ) : (
-        <Text style={styles.status}>No jobs posted yet — try posting one!</Text>
+        <Text style={styles.status}>No jobs posted yet. Try posting one!</Text>
       )}
+
+      <Pressable onPress={() => supabase.auth.signOut()}>
+        <Text style={styles.signOut}>Sign out</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -97,7 +112,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#aaa",
     textAlign: "center",
-    marginBottom: 32,
+    marginBottom: 12,
+  },
+  signedIn: {
+    fontSize: 12,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 24,
   },
   primaryButton: {
     paddingVertical: 16,
@@ -131,4 +152,10 @@ const styles = StyleSheet.create({
   },
   matchName: { fontWeight: "600", fontSize: 16, color: "#fff" },
   matchText: { color: "#fff" },
+  signOut: {
+    marginTop: 32,
+    textAlign: "center",
+    color: "#ff8a80",
+    fontSize: 14,
+  },
 });

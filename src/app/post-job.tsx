@@ -1,29 +1,42 @@
 import { useState } from "react";
-import { Button, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { getCurrentLocation } from "../hooks/useLocation";
+import { RequireAuth, useAuth } from "../lib/auth";
 import { supabase } from "../lib/supabase";
 
 const SKILLS = ["gardening", "domestic", "piece_work"];
 
-// MoMo sandbox test number — safe to use, no real money moves
-const SANDBOX_TEST_MSISDN = "56733123453";
-
 export default function PostJob() {
+  return (
+    <RequireAuth>
+      <PostJobScreen />
+    </RequireAuth>
+  );
+}
+
+function PostJobScreen() {
+  const { session } = useAuth();
   const [title, setTitle] = useState("");
   const [skillNeeded, setSkillNeeded] = useState("gardening");
   const [status, setStatus] = useState("");
   const [matches, setMatches] = useState<any[]>([]);
-  const [payingId, setPayingId] = useState<string | null>(null);
-  const [payStatus, setPayStatus] = useState<{ [key: string]: string }>({});
 
   const submitJob = async () => {
+    if (!session) return;
+
     if (!title.trim()) {
       setStatus("Please enter a job title.");
       return;
     }
 
     setMatches([]);
-    setPayStatus({});
     setStatus("Getting your location...");
     const { lng, lat, usedFallback } = await getCurrentLocation();
 
@@ -33,35 +46,11 @@ export default function PostJob() {
         : "Location found, submitting...",
     );
 
-    const { data: existing } = await supabase
-      .from("jobs")
-      .select("employer_id")
-      .limit(1)
-      .maybeSingle();
-
-    let employerId = existing?.employer_id;
-
-    if (!employerId) {
-      const { data: anyWorker } = await supabase
-        .from("workers")
-        .select("user_id")
-        .limit(1)
-        .maybeSingle();
-      employerId = anyWorker?.user_id;
-    }
-
-    if (!employerId) {
-      setStatus(
-        "Error: no existing user_id found. Create a test user in Supabase Auth first.",
-      );
-      return;
-    }
-
     const { data: newJob, error } = await supabase
       .from("jobs")
       .insert({
-        employer_id: employerId,
-        title,
+        employer_id: session.user.id,
+        title: title.trim(),
         skill_needed: skillNeeded,
         location: `SRID=4326;POINT(${lng} ${lat})`,
       })
@@ -70,64 +59,30 @@ export default function PostJob() {
 
     if (error || !newJob) {
       setStatus(`Error: ${error?.message || "Job was not created"}`);
-      console.log("Insert error:", error);
       return;
     }
 
-    setStatus(
-      usedFallback
-        ? "Job posted (used default location)! Finding matches..."
-        : "Job posted with your real location! Finding matches...",
-    );
     setTitle("");
+    setStatus("Job posted. Finding matches...");
 
     const { data: matchData, error: matchError } = await supabase.rpc(
       "match_workers_for_job",
-      { job_id: newJob.id },
+      {
+        job_id: newJob.id,
+      },
     );
 
     if (matchError) {
       setStatus(`Job posted, but matching failed: ${matchError.message}`);
-      console.log("Match error:", matchError);
-    } else {
-      setStatus(`Job posted — found ${matchData.length} match(es) nearby`);
-      setMatches(matchData);
-    }
-  };
-
-  const payWorker = async (workerId: string) => {
-    setPayingId(workerId);
-    setPayStatus((prev) => ({ ...prev, [workerId]: "Requesting payment..." }));
-
-    const { data, error } = await supabase.functions.invoke("momo-pay", {
-      body: {
-        amount: "50", // placeholder demo amount
-        payerMsisdn: SANDBOX_TEST_MSISDN,
-        externalId: `job-payment-${Date.now()}`,
-      },
-    });
-
-    if (error) {
-      setPayStatus((prev) => ({
-        ...prev,
-        [workerId]: `Error: ${error.message}`,
-      }));
-      console.log("Payment error:", error);
-    } else if (data?.error) {
-      setPayStatus((prev) => ({ ...prev, [workerId]: `Error: ${data.error}` }));
-      console.log("Payment error (from function):", data.error);
-    } else {
-      setPayStatus((prev) => ({
-        ...prev,
-        [workerId]: `Payment requested! Reference: ${data.referenceId}`,
-      }));
+      return;
     }
 
-    setPayingId(null);
+    setStatus(`Job posted. Found ${matchData.length} match(es) nearby.`);
+    setMatches(matchData);
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Post a Job</Text>
 
       <Text style={styles.label}>Job title</Text>
@@ -136,22 +91,36 @@ export default function PostJob() {
         value={title}
         onChangeText={setTitle}
         placeholder="e.g. Need garden cleared"
-        placeholderTextColor="#888"
+        placeholderTextColor="#666"
       />
 
       <Text style={styles.label}>Skill needed</Text>
       <View style={styles.skillRow}>
         {SKILLS.map((s) => (
-          <Button
+          <Pressable
             key={s}
-            title={s}
-            color={skillNeeded === s ? "#007AFF" : "#999"}
             onPress={() => setSkillNeeded(s)}
-          />
+            style={[
+              styles.skillChip,
+              skillNeeded === s && styles.skillChipActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.skillChipText,
+                skillNeeded === s && styles.skillChipTextActive,
+              ]}
+            >
+              {s.replace("_", " ")}
+            </Text>
+          </Pressable>
         ))}
       </View>
 
-      <Button title="Submit" onPress={submitJob} />
+      <Pressable style={styles.primaryButton} onPress={submitJob}>
+        <Text style={styles.primaryButtonText}>Submit</Text>
+      </Pressable>
+
       {status ? <Text style={styles.status}>{status}</Text> : null}
 
       {matches.map((match) => (
@@ -161,42 +130,54 @@ export default function PostJob() {
           <Text style={styles.matchText}>
             Distance: {(match.distance_meters / 1000).toFixed(2)} km
           </Text>
-
-          <View style={styles.payButtonWrapper}>
-            <Button
-              title={
-                payingId === match.worker_id ? "Processing..." : "Pay via MoMo"
-              }
-              onPress={() => payWorker(match.worker_id)}
-              disabled={payingId === match.worker_id}
-              color="#FFCC00"
-            />
-          </View>
-
-          {payStatus[match.worker_id] ? (
-            <Text style={styles.payStatus}>{payStatus[match.worker_id]}</Text>
-          ) : null}
         </View>
       ))}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { padding: 20, paddingTop: 60 },
-  title: { fontSize: 20, fontWeight: "bold", marginBottom: 20, color: "#fff" },
-  label: { fontSize: 14, fontWeight: "600", marginTop: 10, color: "#fff" },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 24, color: "#fff" },
+  label: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 16,
+    marginBottom: 6,
+    color: "#999",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 5,
-    marginBottom: 10,
+    borderColor: "#333",
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
     color: "#fff",
+    backgroundColor: "#111",
   },
-  skillRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
-  status: { marginTop: 15, marginBottom: 15, fontSize: 14, color: "#fff" },
+  skillRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
+  skillChip: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: "#1c1c1e",
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  skillChipActive: { backgroundColor: "#007AFF", borderColor: "#007AFF" },
+  skillChipText: { color: "#aaa", fontWeight: "600", fontSize: 13 },
+  skillChipTextActive: { color: "#fff" },
+  primaryButton: {
+    marginTop: 24,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#007AFF",
+  },
+  primaryButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  status: { marginTop: 16, marginBottom: 12, fontSize: 14, color: "#aaa" },
   matchCard: {
     borderWidth: 1,
     borderColor: "#444",
@@ -206,6 +187,4 @@ const styles = StyleSheet.create({
   },
   matchName: { fontWeight: "600", fontSize: 16, color: "#fff" },
   matchText: { color: "#fff" },
-  payButtonWrapper: { marginTop: 10 },
-  payStatus: { color: "#FFCC00", marginTop: 8, fontSize: 13 },
 });

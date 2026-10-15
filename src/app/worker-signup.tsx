@@ -1,25 +1,30 @@
 import { useState } from "react";
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { getCurrentLocation } from "../hooks/useLocation";
+import { RequireAuth, useAuth } from "../lib/auth";
 import { supabase } from "../lib/supabase";
 
 const SKILLS = ["gardening", "domestic", "piece_work"];
 
 export default function WorkerSignup() {
+  return (
+    <RequireAuth>
+      <WorkerSignupScreen />
+    </RequireAuth>
+  );
+}
+
+function WorkerSignupScreen() {
+  const { session } = useAuth();
   const [name, setName] = useState("");
   const [skill, setSkill] = useState("gardening");
   const [status, setStatus] = useState("");
 
   const submitWorker = async () => {
+    if (!session) return;
+
     if (!name.trim()) {
-      Alert.alert("Missing info", "Please enter a name.");
+      setStatus("Please enter a name.");
       return;
     }
 
@@ -32,39 +37,24 @@ export default function WorkerSignup() {
         : "Location found, submitting...",
     );
 
-    const { data: existingWorker } = await supabase
-      .from("workers")
-      .select("user_id")
-      .limit(1)
-      .maybeSingle();
-
-    const userId = existingWorker?.user_id;
-
-    if (!userId) {
-      setStatus(
-        "Error: no existing user_id found to reuse. Create a test user in Supabase Auth first.",
-      );
-      return;
-    }
-
     const { error } = await supabase.from("workers").insert({
-      user_id: userId,
-      name,
+      user_id: session.user.id,
+      name: name.trim(),
       skill,
       location: `SRID=4326;POINT(${lng} ${lat})`,
     });
 
     if (error) {
       setStatus(`Error: ${error.message}`);
-      console.log("Insert error:", error);
-    } else {
-      setStatus(
-        usedFallback
-          ? "Worker profile created (used default location)!"
-          : "Worker profile created with your real location!",
-      );
-      setName("");
+      return;
     }
+
+    setStatus(
+      usedFallback
+        ? "Worker profile created (default location)."
+        : "Worker profile created with your real location.",
+    );
+    setName("");
   };
 
   return (
@@ -139,10 +129,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
   },
-  skillChipActive: {
-    backgroundColor: "#007AFF",
-    borderColor: "#007AFF",
-  },
+  skillChipActive: { backgroundColor: "#007AFF", borderColor: "#007AFF" },
   skillChipText: { color: "#aaa", fontWeight: "600", fontSize: 13 },
   skillChipTextActive: { color: "#fff" },
   primaryButton: {
