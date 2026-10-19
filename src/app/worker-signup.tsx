@@ -37,12 +37,15 @@ function WorkerSignupScreen() {
         : "Location found, submitting...",
     );
 
-    const { error } = await supabase.from("workers").insert({
-      user_id: session.user.id,
-      name: name.trim(),
-      skill,
-      location: `SRID=4326;POINT(${lng} ${lat})`,
-    });
+    const { error } = await supabase.from("workers").upsert(
+      {
+        user_id: session.user.id,
+        name: name.trim(),
+        skill,
+        location: `SRID=4326;POINT(${lng} ${lat})`,
+      },
+      { onConflict: "user_id" },
+    );
 
     if (error) {
       setStatus(`Error: ${error.message}`);
