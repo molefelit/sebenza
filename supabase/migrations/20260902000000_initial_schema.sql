@@ -6,9 +6,10 @@
 -- Safe to re-run.
 
 -- PostGIS: location types and distance queries.
--- On the live project it was installed in the public schema, which is why
--- geography_columns, geometry_columns and spatial_ref_sys appear there.
-create extension if not exists postgis;
+-- Installed in the extensions schema, which the API does not expose. (In October 2026 it was
+-- moved there from the public schema, where its spatial_ref_sys table was exposed with
+-- write access. That move deleted test data, so it is not saved as a migration.)
+create extension if not exists postgis with schema extensions;
 
 -- Workers: one row per worker profile, with skill and location
 create table if not exists public.workers (
@@ -16,7 +17,7 @@ create table if not exists public.workers (
   user_id uuid not null references auth.users(id),
   name text not null,
   skill text not null,
-  location geography(point, 4326) not null,
+  location extensions.geography(point, 4326) not null,
   created_at timestamptz default now()
 );
 
@@ -29,7 +30,7 @@ create table if not exists public.jobs (
   employer_id uuid not null references auth.users(id),
   title text not null,
   skill_needed text not null,
-  location geography(point, 4326) not null,
+  location extensions.geography(point, 4326) not null,
   created_at timestamptz default now()
 );
 
