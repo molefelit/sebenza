@@ -13,6 +13,9 @@ import { supabase } from "../lib/supabase";
 
 const SKILLS = ["gardening", "domestic", "piece_work"];
 
+// Demo area (Johannesburg CBD): the sample workers are seeded around here
+const DEMO_LOCATION = { lng: 28.0473, lat: -26.2041 };
+
 export default function PostJob() {
   return (
     <RequireAuth>
@@ -25,6 +28,7 @@ function PostJobScreen() {
   const { session } = useAuth();
   const [title, setTitle] = useState("");
   const [skillNeeded, setSkillNeeded] = useState("gardening");
+  const [useDemoLocation, setUseDemoLocation] = useState(true);
   const [status, setStatus] = useState("");
   const [matches, setMatches] = useState<any[]>([]);
 
@@ -37,13 +41,22 @@ function PostJobScreen() {
     }
 
     setMatches([]);
-    setStatus("Getting your location...");
-    const { lng, lat, usedFallback } = await getCurrentLocation();
+    setStatus(
+      useDemoLocation
+        ? "Using the demo location..."
+        : "Getting your location...",
+    );
+
+    const { lng, lat, usedFallback } = useDemoLocation
+      ? { ...DEMO_LOCATION, usedFallback: false }
+      : await getCurrentLocation();
 
     setStatus(
-      usedFallback
-        ? "Using default location, submitting..."
-        : "Location found, submitting...",
+      useDemoLocation
+        ? "Demo location set, submitting..."
+        : usedFallback
+          ? "Using default location, submitting..."
+          : "Location found, submitting...",
     );
 
     const { data: newJob, error } = await supabase
@@ -117,6 +130,26 @@ function PostJobScreen() {
         ))}
       </View>
 
+      <Text style={styles.label}>Location</Text>
+      <Pressable
+        onPress={() => setUseDemoLocation(!useDemoLocation)}
+        style={[
+          styles.locationToggle,
+          useDemoLocation && styles.locationToggleActive,
+        ]}
+      >
+        <Text
+          style={[
+            styles.locationToggleText,
+            useDemoLocation && styles.locationToggleTextActive,
+          ]}
+        >
+          {useDemoLocation
+            ? "Demo location: Johannesburg (tap to use my real location)"
+            : "My real location (tap to use the demo location)"}
+        </Text>
+      </Pressable>
+
       <Pressable style={styles.primaryButton} onPress={submitJob}>
         <Text style={styles.primaryButtonText}>Submit</Text>
       </Pressable>
@@ -169,6 +202,17 @@ const styles = StyleSheet.create({
   skillChipActive: { backgroundColor: "#007AFF", borderColor: "#007AFF" },
   skillChipText: { color: "#aaa", fontWeight: "600", fontSize: 13 },
   skillChipTextActive: { color: "#fff" },
+  locationToggle: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "#1c1c1e",
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  locationToggleActive: { borderColor: "#007AFF" },
+  locationToggleText: { color: "#aaa", fontSize: 14 },
+  locationToggleTextActive: { color: "#fff" },
   primaryButton: {
     marginTop: 24,
     paddingVertical: 16,
